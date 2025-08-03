@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gateway BLE Wi-Fi Config</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+  <div class="bg-white shadow-md rounded-lg p-6 w-full max-w-md">
+    <h2 class="text-2xl font-bold text-center mb-4">📶 Configurar Wi-Fi</h2>
+    <div class="mb-4">
+      <label for="ssid" class="block text-sm font-medium text-gray-700">Selecionar Rede</label>
+      <select id="ssid" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+        <option value="">🔄 Primeiro procura redes...</option>
+      </select>
+    </div>
+    <div class="mb-4">
+      <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+      <input type="password" id="password" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Password da Rede">
+    </div>
+    <button onclick="buscarRedes()" class="w-full bg-yellow-500 text-white py-2 px-4 rounded hover:bg-yellow-600 transition mb-2">🔄 Procurar Redes Wi-Fi</button>
+    <button onclick="enviarDados()" class="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 transition">📡 Enviar Configuração</button>
+    <p class="mt-4 text-center font-semibold text-sm" id="status"></p>
+  </div>
+
+  <script>
+    const SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0';
+    const SSID_UUID = '12345678-1234-5678-1234-56789abcdef1';
+    const PASS_UUID = '12345678-1234-5678-1234-56789abcdef2';
+    const SCAN_UUID = '12345678-1234-5678-1234-56789abcdef3';
+
+    let device, service;
+
+    async function buscarRedes() {
+      const status = document.getElementById('status');
+      const select = document.getElementById('ssid');
+      status.textContent = '';
+
+      try {
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [SERVICE_UUID] }]
+        });
+        const server = await device.gatt.connect();
+        service = await server.getPrimaryService(SERVICE_UUID);
+
+        const scanChar = await service.getCharacteristic(SCAN_UUID);
+        const value = await scanChar.readValue();
+        const rawText = new TextDecoder().decode(value);
+        console.log("RAW recebido:", rawText);
+
+        const ssids = rawText
+          .split(',')
+          .map(s => s.trim())
+          .filter((s, i, self) => s && self.indexOf(s) === i);
+
+        select.innerHTML = '';
+        ssids.forEach(ssid => {
+          const opt = document.createElement('option');
+          opt.value = ssid;
+          opt.textContent = ssid;
+          select.appendChild(opt);
+        });
+
+        status.textContent = ssids.length ? '✅ Redes carregadas' : '⚠️ Nenhuma rede encontrada';
+        status.className = ssids.length ? 'text-green-600' : 'text-yellow-600';
+      } catch (error) {
+        console.error(error);
+        status.textContent = '❌ Erro ao procurar redes: ' + error.message;
+        status.className = 'text-red-500';
+      }
+    }
+
+    async function enviarDados() {
+      const password = document.getElementById('password').value;
+      const ssid = document.getElementById('ssid').value;
+      const status = document.getElementById('status');
+
+      if (!ssid || !password) {
+        status.textContent = '⚠️ Preencha todos os campos';
+        status.className = 'text-red-500';
+        return;
+      }
+
+      try {
+        if (!device || !service) {
+          status.textContent = '⚠️ Tens de procurar redes primeiro';
+          status.className = 'text-red-500';
+          return;
+        }
+
+        const ssidChar = await service.getCharacteristic(SSID_UUID);
+        const passChar = await service.getCharacteristic(PASS_UUID);
+
+        await ssidChar.writeValue(new TextEncoder().encode(ssid));
+        await passChar.writeValue(new TextEncoder().encode(password));
+
+        status.textContent = '✅ Configuração enviada com sucesso!';
+        status.className = 'text-green-600';
+      } catch (error) {
+        console.error(error);
+        status.textContent = '❌ Erro ao enviar: ' + error.message;
+        status.className = 'text-red-500';
+      }
+    }
+  </script>
+</body>
+</html>
